@@ -56,7 +56,8 @@ pub const TokenModifiers = packed struct(u16) {
     defaultLibrary: bool = false,
     // non standard token modifiers
     generic: bool = false,
-    _: u5 = 0,
+    mutable: bool = false,
+    _: u4 = 0,
 };
 
 const Builder = struct {
@@ -247,7 +248,9 @@ fn colorIdentifierBasedOnType(
             new_tok_mod.generic = true;
         }
 
-        const has_self_param = try builder.analyser.hasSelfParam(type_node);
+        var mutable = false;
+        const has_self_param = try builder.analyser.hasSelfParam(type_node, &mutable);
+        new_tok_mod.mutable = mutable;
 
         try writeTokenMod(builder, target_tok, if (has_self_param) .method else .function, new_tok_mod);
     } else {
@@ -389,22 +392,25 @@ fn writeNodeTokens(builder: *Builder, node: Ast.Node.Index) error{OutOfMemory}!v
                 .is_type_val = true,
             };
 
+            var self_is_mutable = false;
             const func_name_tok_type: TokenType = if (func_ty.isTypeFunc())
                 .type
-            else if (try builder.analyser.hasSelfParam(func_ty))
+            else if (try builder.analyser.hasSelfParam(func_ty, &self_is_mutable))
                 .method
             else
                 .function;
 
-            const tok_mod = TokenModifiers{
+            const tok_mod: TokenModifiers = .{
                 .declaration = true,
                 .generic = func_ty.isGenericFunc(),
+                .mutable = self_is_mutable,
             };
 
             try writeTokenMod(builder, fn_proto.name_token, func_name_tok_type, tok_mod);
 
             var it = fn_proto.iterate(&tree);
-            while (ast.nextFnParam(&it)) |param_decl| {
+            var i: usize = 0;
+            while (ast.nextFnParam(&it)) |param_decl| : (i += 1) {
                 try writeToken(builder, param_decl.comptime_noalias, .keyword);
 
                 const token_type: TokenType = if (param_decl.type_expr) |type_expr|
@@ -414,7 +420,12 @@ fn writeNodeTokens(builder: *Builder, node: Ast.Node.Index) error{OutOfMemory}!v
                         .parameter
                 else
                     .parameter;
-                try writeTokenMod(builder, param_decl.name_token, token_type, .{ .declaration = true });
+                try writeTokenMod(
+                    builder,
+                    param_decl.name_token,
+                    token_type,
+                    .{ .declaration = true, .mutable = self_is_mutable and i == 0 },
+                );
 
                 if (param_decl.anytype_ellipsis3) |any_token| {
                     try writeToken(builder, any_token, .type);
@@ -784,23 +795,6 @@ fn writeNodeTokens(builder: *Builder, node: Ast.Node.Index) error{OutOfMemory}!v
         .array_cat,
         .array_mult,
         .assign,
-        .assign_bit_and,
-        .assign_bit_or,
-        .assign_shl,
-        .assign_shl_sat,
-        .assign_shr,
-        .assign_bit_xor,
-        .assign_div,
-        .assign_sub,
-        .assign_sub_wrap,
-        .assign_sub_sat,
-        .assign_mod,
-        .assign_add,
-        .assign_add_wrap,
-        .assign_add_sat,
-        .assign_mul,
-        .assign_mul_wrap,
-        .assign_mul_sat,
         .bang_equal,
         .bit_and,
         .bit_or,
@@ -836,6 +830,30 @@ fn writeNodeTokens(builder: *Builder, node: Ast.Node.Index) error{OutOfMemory}!v
             try writeToken(builder, main_token, token_type);
             try writeNodeTokens(builder, rhs);
         },
+        .assign_bit_and,
+        .assign_bit_or,
+        .assign_shl,
+        .assign_shl_sat,
+        .assign_shr,
+        .assign_bit_xor,
+        .assign_div,
+        .assign_sub,
+        .assign_sub_wrap,
+        .assign_sub_sat,
+        .assign_mod,
+        .assign_add,
+        .assign_add_wrap,
+        .assign_add_sat,
+        .assign_mul,
+        .assign_mul_wrap,
+        .assign_mul_sat,
+        => {
+            const lhs, const rhs = tree.nodeData(node).node_and_node;
+            try writeNodeTokens(builder, lhs);
+
+            try writeTokenMod(builder, main_token, .operator, .{ .mutable = true });
+            try writeNodeTokens(builder, rhs);
+        },
         .assign_destructure => {
             const data = tree.assignDestructure(node);
 
@@ -854,12 +872,7 @@ fn writeNodeTokens(builder: *Builder, node: Ast.Node.Index) error{OutOfMemory}!v
                     },
                     .identifier => {
                         const name_token = tree.nodeMainToken(lhs_node);
-                        const maybe_type = if (resolved_type) |ty| try builder.analyser.resolveTupleFieldType(ty, index) else null;
-                        const ty = maybe_type orelse {
-                            try writeIdentifier(builder, name_token);
-                            continue;
-                        };
-                        try colorIdentifierBasedOnType(builder, ty, name_token, false, .{});
+                        try writeIdentifier(builder, name_token);
                     },
                     else => {},
                 }
@@ -1031,10 +1044,12 @@ fn writeVarDecl(builder: *Builder, var_decl: Ast.full.VarDecl, resolved_type: ?A
     try writeToken(builder, var_decl.comptime_token, .keyword);
     try writeToken(builder, var_decl.ast.mut_token, .keyword);
 
+    const mutable = tree.tokenTag(var_decl.ast.mut_token) == .keyword_var;
+
     if (resolved_type) |decl_type| {
-        try colorIdentifierBasedOnType(builder, decl_type, var_decl.ast.mut_token + 1, false, .{ .declaration = true });
+        try colorIdentifierBasedOnType(builder, decl_type, var_decl.ast.mut_token + 1, false, .{ .declaration = true, .mutable = mutable });
     } else {
-        try writeTokenMod(builder, var_decl.ast.mut_token + 1, .variable, .{ .declaration = true });
+        try writeTokenMod(builder, var_decl.ast.mut_token + 1, .variable, .{ .declaration = true, .mutable = mutable });
     }
 
     if (var_decl.ast.type_node.unwrap()) |type_node| try writeNodeTokens(builder, type_node);
@@ -1070,15 +1085,40 @@ fn writeIdentifier(builder: *Builder, name_token: Ast.TokenIndex) error{OutOfMem
         name,
         tree.tokenStart(name_token),
     )) |child| {
-        const is_param = child.decl == .function_parameter;
+        const is_param, const is_first_param = switch (child.decl) {
+            .function_parameter => |param| .{ true, param.param_index == 0 },
+            else => .{ false, false },
+        };
 
         if (try child.resolveType(builder.analyser)) |decl_type| {
-            return try colorIdentifierBasedOnType(builder, decl_type, name_token, is_param, .{});
+            const container_type = try builder.analyser.innermostContainer(handle, tree.tokenStart(name_token));
+            const mutable_self_param = is_first_param and mut: {
+                const self_type = switch (decl_type.data) {
+                    .pointer => |info| switch (info.size) {
+                        .one => blk: {
+                            if (info.is_const) break :mut false;
+                            break :blk info.elem_ty.*;
+                        },
+                        .many, .slice, .c => break :mut false,
+                    },
+                    else => break :mut false,
+                };
+
+                const expected_type = switch (container_type.data) {
+                    .pointer => |info| switch (info.size) {
+                        .one => info.elem_ty.*,
+                        .many, .slice, .c => break :mut false,
+                    },
+                    else => container_type,
+                };
+                break :mut self_type.eql(expected_type);
+            };
+            return try colorIdentifierBasedOnType(builder, decl_type, name_token, is_param, .{ .mutable = mutable_self_param or !child.isConst() });
         } else {
-            try writeTokenMod(builder, name_token, if (is_param) .parameter else .variable, .{});
+            try writeTokenMod(builder, name_token, if (is_param) .parameter else .variable, .{ .mutable = !child.isConst() });
         }
     } else {
-        try writeTokenMod(builder, name_token, .variable, .{});
+        try writeToken(builder, name_token, .variable);
     }
 }
 

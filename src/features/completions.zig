@@ -351,7 +351,7 @@ fn functionTypeCompletion(
     const has_self_param = if (parent_container_ty) |container_ty| blk: {
         if (container_ty.is_type_val) break :blk false;
         if (container_ty.isNamespace()) break :blk false;
-        break :blk try builder.analyser.firstParamIs(func_ty, container_ty.typeOf(builder.analyser));
+        break :blk try builder.analyser.firstParamIs(func_ty, container_ty.typeOf(builder.analyser), null);
     } else false;
 
     const insert_range, const replace_range, const new_text_format = prepareFunctionCompletion(builder);
@@ -1638,7 +1638,7 @@ fn collectFieldAccessContainerNodes(
             const symbol_decl = try analyser.lookupSymbolGlobal(handle, first_symbol, loc.start) orelse continue;
             const symbol_type = try symbol_decl.resolveType(analyser) orelse continue;
             if (!symbol_type.is_type_val) { // then => instance_of_T
-                if (try analyser.hasSelfParam(node_type)) break :blk 1;
+                if (try analyser.hasSelfParam(node_type, null)) break :blk 1;
             }
             break :blk 0; // is `T`, no SelfParam
         };

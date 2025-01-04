@@ -348,22 +348,23 @@ pub fn isInstanceCall(
 
     std.debug.assert(container_ty.is_type_val);
 
-    return analyser.firstParamIs(func_ty, container_ty);
+    return analyser.firstParamIs(func_ty, container_ty, null);
 }
 
-pub fn hasSelfParam(analyser: *Analyser, func_ty: Type) error{OutOfMemory}!bool {
+pub fn hasSelfParam(analyser: *Analyser, func_ty: Type, self_is_mutable: ?*bool) error{OutOfMemory}!bool {
     const func_node = func_ty.data.other; // this assumes that function types can only be Ast nodes
     const fn_token = func_node.handle.tree.nodeMainToken(func_node.node);
     const in_container = try analyser.innermostContainer(func_node.handle, func_node.handle.tree.tokenStart(fn_token));
     std.debug.assert(in_container.is_type_val);
     if (in_container.isNamespace()) return false;
-    return analyser.firstParamIs(func_ty, in_container);
+    return analyser.firstParamIs(func_ty, in_container, self_is_mutable);
 }
 
 pub fn firstParamIs(
     analyser: *Analyser,
     func_type: Type,
     expected_type: Type,
+    mutable: ?*bool,
 ) error{OutOfMemory}!bool {
     std.debug.assert(func_type.isFunc());
     const func_handle = func_type.data.other;
@@ -384,12 +385,12 @@ pub fn firstParamIs(
     }) orelse return false;
     if (!resolved_type.is_type_val) return false;
 
-    const deref_type = switch (resolved_type.data) {
+    const deref_type, const deref_is_mut = switch (resolved_type.data) {
         .pointer => |info| switch (info.size) {
-            .one => info.elem_ty.*,
+            .one => .{ info.elem_ty.*, !info.is_const },
             .many, .slice, .c => return false,
         },
-        else => resolved_type,
+        else => .{ resolved_type, false },
     };
 
     const deref_expected_type = switch (expected_type.data) {
@@ -400,7 +401,9 @@ pub fn firstParamIs(
         else => expected_type,
     };
 
-    return deref_type.eql(deref_expected_type);
+    const eql = deref_type.eql(deref_expected_type);
+    if (mutable) |mut| mut.* = deref_is_mut and eql;
+    return eql;
 }
 
 pub fn getVariableSignature(
@@ -4629,7 +4632,7 @@ pub fn collectDeclarationsOfContainer(
                                 },
                             },
                             .is_type_val = true,
-                        })) continue;
+                        }, null)) continue;
                     }
                 },
                 else => {},
@@ -5235,7 +5238,7 @@ pub fn resolveExpressionTypeFromAncestors(
 
             const fn_node_handle = fn_type.data.other; // this assumes that function types can only be Ast nodes
             const param_decl: Declaration.Param = .{
-                .param_index = @truncate(arg_index + @intFromBool(try analyser.hasSelfParam(fn_type))),
+                .param_index = @truncate(arg_index + @intFromBool(try analyser.hasSelfParam(fn_type, null))),
                 .func = fn_node_handle.node,
             };
             const param = param_decl.get(fn_node_handle.handle.tree) orelse return null;
