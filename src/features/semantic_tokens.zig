@@ -29,6 +29,7 @@ pub const TokenType = enum(u32) {
     modifier,
     comment,
     string,
+    escapeSequence,
     number,
     regexp,
     operator,
@@ -157,6 +158,7 @@ const Builder = struct {
             .keyword,
             .comment,
             .string,
+            .escapeSequence,
             .number,
             .operator,
             .builtin,
@@ -695,7 +697,27 @@ fn writeNodeTokens(builder: *Builder, node: Ast.Node.Index) error{OutOfMemory}!v
         .string_literal,
         .char_literal,
         => {
-            try writeToken(builder, main_token, .string);
+            const string_start = tree.tokenStart(tree.firstToken(node));
+            const string = offsets.nodeToSlice(tree, node);
+            var offset: usize = 0;
+            while (offset < string.len) {
+                const slash_index = std.mem.indexOfScalarPos(u8, string, offset, '\\') orelse break;
+                try builder.addDirect(.string, .{}, .{
+                    .start = offset + string_start,
+                    .end = slash_index + string_start,
+                });
+
+                offset = slash_index;
+                _ = std.zig.string_literal.parseEscapeSequence(string, &offset);
+                try builder.addDirect(.escapeSequence, .{}, .{
+                    .start = slash_index + string_start,
+                    .end = offset + string_start,
+                });
+            }
+            try builder.addDirect(.string, .{}, .{
+                .start = offset + string_start,
+                .end = string_start + string.len,
+            });
         },
         .multiline_string_literal => {
             const first_token, const last_token = tree.nodeData(node).token_and_token;

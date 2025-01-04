@@ -94,6 +94,20 @@ test "string literals" {
         .{ "\\\\world", .string, .{} },
         .{ "\\\\", .string, .{} },
     });
+    try testSemanticTokens(
+        \\const omega = "Hello, \u{1f30e}!\n";
+    ,
+        &.{
+            .{ "const", .keyword, .{} },
+            .{ "omega", .variable, .{ .declaration = true } },
+            .{ "=", .operator, .{} },
+            .{ "\"Hello, ", .string, .{} },
+            .{ "\\u{1f30e}", .escapeSequence, .{} },
+            .{ "!", .string, .{} },
+            .{ "\\n", .escapeSequence, .{} },
+            .{ "\"", .string, .{} },
+        },
+    );
 }
 
 test "type literals" {
@@ -137,6 +151,18 @@ test "char literals" {
         .{ "=", .operator, .{} },
         .{ "' '", .string, .{} },
     });
+    try testSemanticTokens(
+        \\var alpha = '\n';
+    ,
+        &.{
+            .{ "var", .keyword, .{} },
+            .{ "alpha", .variable, .{ .declaration = true } },
+            .{ "=", .operator, .{} },
+            .{ "'", .string, .{} },
+            .{ "\\n", .escapeSequence, .{} },
+            .{ "'", .string, .{} },
+        },
+    );
 }
 
 test "var decl" {
