@@ -1924,11 +1924,15 @@ fn resolveTypeOfNodeUncached(analyser: *Analyser, options: ResolveOptions) error
         .error_union => {
             const lhs, const rhs = tree.nodeData(node).node_and_node;
 
-            const error_set = try analyser.resolveTypeOfNodeInternal(.of(lhs, handle)) orelse return null;
+            const error_set = try analyser.resolveTypeOfNodeInternal(.of(lhs, handle)) orelse
+                Type.fromIP(analyser, .type_type, .unknown_type);
             if (!error_set.is_type_val) return null;
 
-            const payload = try analyser.resolveTypeOfNodeInternal(.of(rhs, handle)) orelse return null;
+            const payload = try analyser.resolveTypeOfNodeInternal(.of(rhs, handle)) orelse
+                Type.fromIP(analyser, .type_type, .unknown_type);
             if (!payload.is_type_val) return null;
+
+            if (error_set.isUnknownType() and payload.isUnknownType()) return null;
 
             return .{
                 .data = .{ .error_union = .{
@@ -3670,6 +3674,15 @@ pub const Type = struct {
         return switch (self.data) {
             .compile_error => true,
             .ip_index => |payload| payload.index == .noreturn_type,
+            else => false,
+        };
+    }
+
+    pub fn isUnknownType(self: Type) bool {
+        if (!self.is_type_val) return false;
+        return switch (self.data) {
+            .ip_index => |ip| ip.type == .unknown_type or
+                ip.type == .type_type and ip.index == .unknown_type,
             else => false,
         };
     }
