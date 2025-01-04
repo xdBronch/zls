@@ -3420,7 +3420,19 @@ pub const Type = struct {
                 else => try writer.writeAll(offsets.nodeToSlice(node_handle.handle.tree, node_handle.node)),
             },
             .ip_index => |payload| try analyser.ip.print(payload.index orelse try analyser.ip.getUnknown(analyser.gpa, payload.type), writer, .{}),
-            .either => try writer.writeAll("either type"), // TODO
+            .either => |types| {
+                for (types, 1..) |entry, i| {
+                    switch (entry.type_data) {
+                        .ip_index => |payload| try analyser.ip.print(payload.type, writer, .{}),
+                        else => try writer.print("{}", .{fmtTypeVal(
+                            .{ .data = entry.type_data, .is_type_val = true },
+                            analyser,
+                            ctx.options,
+                        )}),
+                    }
+                    if (i < types.len) try writer.writeAll(" or ");
+                }
+            },
             .compile_error => |node_handle| try writer.writeAll(offsets.nodeToSlice(node_handle.handle.tree, node_handle.node)),
         }
     }

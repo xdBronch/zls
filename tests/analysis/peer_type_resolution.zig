@@ -40,7 +40,15 @@ pub fn main() void {
 
     const comptime_int_and_void = if (runtime_bool) 0 else {};
     _ = comptime_int_and_void;
-    //  ^^^^^^^^^^^^^^^^^^^^^ (either type)()
+    //  ^^^^^^^^^^^^^^^^^^^^^ (comptime_int or void)()
+
+    const many_types = if (runtime_bool) 0 else if (runtime_bool) {} else if (runtime_bool) "" else if (runtime_bool) @as(S, undefined) else null;
+    _ = many_types;
+    //  ^^^^^^^^^^ (comptime_int or void or *const [0:0]u8 or ?S)()
+
+    const partially_unknown = if (runtime_bool) 0 else ({})[0];
+    _ = partially_unknown;
+    //  ^^^^^^^^^^^^^^^^^ (comptime_int)()
 
     runtime_bool = undefined;
 }

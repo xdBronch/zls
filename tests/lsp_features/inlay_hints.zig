@@ -232,6 +232,7 @@ test "var decl" {
     try testInlayHints(
         \\const a<@Vector(2,u8)> = @Vector(2, u8){1,2};
         \\const foo<@Vector(2,bool)> = a == a;
+        \\const either<either type> = if (true) a else foo;
     , .{ .kind = .Type });
     try testInlayHints(
         \\const foo<comptime_int> = 5;
@@ -270,6 +271,7 @@ test "var decl" {
         \\         d: usize,
         \\         e: []const u8,
         \\     },
+        \\     d: if (true) bool else struct {},
         \\ } {
         \\     return .{
         \\         .a<u32> = a,
@@ -277,7 +279,8 @@ test "var decl" {
         \\         .c<struct {...}> = .{
         \\             .d<usize> = 0,
         \\             .e<[]const u8> = "Testing",
-        \\         }
+        \\         },
+        \\         .d<either type> = true,
         \\     };
         \\ }
         \\

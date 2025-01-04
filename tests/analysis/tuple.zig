@@ -12,7 +12,7 @@ const some_tuple_array_access_2 = some_tuple[2];
 //    ^^^^^^^^^^^^^^^^^^^^^^^^^ (unknown)()
 
 const either_tuple = if (true) .{undefined} else .{ undefined, undefined };
-//    ^^^^^^^^^^^^ (either type)()
+//    ^^^^^^^^^^^^ (struct { @TypeOf(undefined) } or struct { @TypeOf(undefined), @TypeOf(undefined) })()
 
 comptime {
     const some_tuple_0, const some_tuple_1 = some_tuple;

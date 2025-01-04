@@ -341,11 +341,14 @@ fn writeBuiltinHint(builder: *Builder, parameters: []const Ast.Node.Index, argum
 fn typeStrOfNode(builder: *Builder, node: Ast.Node.Index) !?[]const u8 {
     const resolved_type = try builder.analyser.resolveTypeOfNode(.{ .handle = builder.handle, .node = node }) orelse return null;
 
-    const type_str: []const u8 = try std.fmt.allocPrint(
-        builder.arena,
-        "{}",
-        .{resolved_type.fmt(builder.analyser, .{ .truncate_container_decls = true })},
-    );
+    const type_str: []const u8 = if (resolved_type.data == .either)
+        "either type"
+    else
+        try std.fmt.allocPrint(
+            builder.arena,
+            "{}",
+            .{resolved_type.fmt(builder.analyser, .{ .truncate_container_decls = true })},
+        );
     if (type_str.len == 0) return null;
 
     return type_str;
@@ -359,11 +362,14 @@ fn typeStrOfToken(builder: *Builder, token: Ast.TokenIndex) !?[]const u8 {
     ) orelse return null;
     const resolved_type = try things.resolveType(builder.analyser) orelse return null;
 
-    const type_str: []const u8 = try std.fmt.allocPrint(
-        builder.arena,
-        "{}",
-        .{resolved_type.fmt(builder.analyser, .{ .truncate_container_decls = true })},
-    );
+    const type_str: []const u8 = if (resolved_type.data == .either)
+        "either type"
+    else
+        try std.fmt.allocPrint(
+            builder.arena,
+            "{}",
+            .{resolved_type.fmt(builder.analyser, .{ .truncate_container_decls = true })},
+        );
     if (type_str.len == 0) return null;
 
     return type_str;
@@ -553,11 +559,14 @@ fn writeNodeInlayHint(
                 const name = offsets.locToSlice(tree.source, name_loc);
                 const decl = (try builder.analyser.getSymbolEnumLiteral(builder.handle, name_loc.start, name)) orelse continue;
                 const ty = try decl.resolveType(builder.analyser) orelse continue;
-                const type_str: []const u8 = try std.fmt.allocPrint(
-                    builder.arena,
-                    "{}",
-                    .{ty.fmt(builder.analyser, .{ .truncate_container_decls = true })},
-                );
+                const type_str: []const u8 = if (ty.data == .either)
+                    "either type"
+                else
+                    try std.fmt.allocPrint(
+                        builder.arena,
+                        "{}",
+                        .{ty.fmt(builder.analyser, .{ .truncate_container_decls = true })},
+                    );
                 if (type_str.len == 0) continue;
                 try appendTypeHintString(
                     builder,
