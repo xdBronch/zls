@@ -584,6 +584,27 @@ test "union" {
         \\(type)
         \\```
     );
+    try testHover(
+        \\const SomeThing = union(enum(u8)) {
+        \\    n<cursor>um: u32,
+        \\};
+    ,
+        \\```zig
+        \\u32
+        \\```
+    );
+    try testHover(
+        \\const SomeThing = union(enum(u8)) {
+        \\    n<cursor>um: u32 = 0,
+        \\};
+    ,
+        \\```zig
+        \\u32 = 0
+        \\```
+        \\```zig
+        \\(u32)
+        \\```
+    );
 }
 
 test "array cat and mult" {

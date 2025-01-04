@@ -133,16 +133,16 @@ fn hoverSymbolRecursive(
         => tree.tokenSlice(decl_handle.nameToken()),
     };
 
-    var resolved_type_str: []const u8 = "unknown";
-    if (try decl_handle.resolveType(analyser)) |resolved_type| {
+    const resolved_type_str: ?[]const u8 = if (try decl_handle.resolveType(analyser)) |resolved_type| blk: {
         if (try resolved_type.docComments(arena)) |doc|
             try doc_strings.append(arena, doc);
         try analyser.referencedTypes(
             resolved_type,
             &reference_collector,
         );
-        resolved_type_str = try std.fmt.allocPrint(arena, "{}", .{resolved_type.fmt(analyser, .{ .truncate_container_decls = false })});
-    }
+        break :blk try std.fmt.allocPrint(arena, "{}", .{resolved_type.fmt(analyser, .{ .truncate_container_decls = false })});
+    } else null;
+    const include_type = if (resolved_type_str) |ty_str| !std.mem.eql(u8, def_str, ty_str) else true;
     const referenced_types: []const Analyser.ReferencedType = type_references.keys();
 
     var hover_text: std.ArrayListUnmanaged(u8) = .empty;
@@ -150,10 +150,10 @@ fn hoverSymbolRecursive(
     if (markup_kind == .markdown) {
         for (doc_strings.items) |doc|
             try writer.print("{s}\n\n", .{doc});
-        if (is_fn) {
+        if (is_fn or !include_type) {
             try writer.print("```zig\n{s}\n```", .{def_str});
         } else {
-            try writer.print("```zig\n{s}\n```\n```zig\n({s})\n```", .{ def_str, resolved_type_str });
+            try writer.print("```zig\n{s}\n```\n```zig\n({s})\n```", .{ def_str, resolved_type_str orelse "unknown" });
         }
         if (referenced_types.len > 0)
             try writer.print("\n\n" ++ "Go to ", .{});
@@ -167,10 +167,10 @@ fn hoverSymbolRecursive(
     } else {
         for (doc_strings.items) |doc|
             try writer.print("{s}\n\n", .{doc});
-        if (is_fn) {
+        if (is_fn or !include_type) {
             try writer.print("{s}", .{def_str});
         } else {
-            try writer.print("{s}\n({s})", .{ def_str, resolved_type_str });
+            try writer.print("{s}\n({s})", .{ def_str, resolved_type_str orelse "unknown" });
         }
     }
 
