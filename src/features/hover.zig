@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const Ast = std.zig.Ast;
+const Token = std.zig.Token;
 
 const ast = @import("../ast.zig");
 const types = @import("lsp").types;
@@ -447,6 +448,79 @@ fn hoverDefinitionNumberLiteral(
     };
 }
 
+fn hoverDefinitionStringLiteral(
+    arena: std.mem.Allocator,
+    handle: *DocumentStore.Handle,
+    hover_loc: offsets.Loc,
+    markup_kind: types.MarkupKind,
+    offset_encoding: offsets.Encoding,
+) !?types.Hover {
+    const tracy_zone = tracy.trace(@src());
+    defer tracy_zone.end();
+
+    const tree = handle.tree;
+
+    const token = offsets.sourceIndexToTokenIndex(tree, hover_loc.start).pickPreferred(&.{
+        .string_literal,
+        .multiline_string_literal_line,
+    }, &tree).?;
+    const len, const loc = switch (tree.tokenTag(token)) {
+        .string_literal => .{ offsets.locToSlice(tree.source, hover_loc).len - 2, hover_loc },
+        .multiline_string_literal_line => blk: {
+            const start = if (std.mem.lastIndexOfNone(
+                Token.Tag,
+                tree.tokens.items(.tag)[0..(token + 1)],
+                &.{.multiline_string_literal_line},
+            )) |i| i + 1 else 0;
+            const end = std.mem.indexOfNonePos(
+                Token.Tag,
+                tree.tokens.items(.tag),
+                token,
+                &.{.multiline_string_literal_line},
+            ) orelse tree.tokens.len;
+
+            var len: usize = 0;
+            for (start..end) |i| {
+                std.debug.assert(tree.tokenTag(@intCast(i)) == .multiline_string_literal_line);
+                const string_part = offsets.tokenToSlice(tree, @intCast(i));
+                len += string_part.len -
+                    // leading backslashes
+                    2 +
+                    // newline character unless we're on the last line
+                    @intFromBool(i != end - 1);
+            }
+
+            const loc = offsets.tokensToLoc(tree, @intCast(start), @intCast(end - 1));
+            break :blk .{ len, loc };
+        },
+        else => unreachable,
+    };
+
+    const hover_text = switch (markup_kind) {
+        .markdown => try std.fmt.allocPrint(
+            arena,
+            \\```zig
+            \\*const [{d}:0]u8
+            \\```
+        ,
+            .{len},
+        ),
+        .plaintext, .unknown_value => try std.fmt.allocPrint(
+            arena,
+            "*const [{d}:0]u8",
+            .{len},
+        ),
+    };
+
+    return .{
+        .contents = .{ .MarkupContent = .{
+            .kind = markup_kind,
+            .value = hover_text,
+        } },
+        .range = offsets.locToRange(handle.tree.source, loc, offset_encoding),
+    };
+}
+
 pub fn hover(
     analyser: *Analyser,
     arena: std.mem.Allocator,
@@ -465,6 +539,11 @@ pub fn hover(
         .label_access, .label_decl => |loc| try hoverDefinitionLabel(analyser, arena, handle, source_index, loc, markup_kind, offset_encoding),
         .enum_literal => try hoverDefinitionEnumLiteral(analyser, arena, handle, source_index, markup_kind, offset_encoding),
         .number_literal, .char_literal => try hoverDefinitionNumberLiteral(arena, handle, source_index, markup_kind, offset_encoding, client_name),
+        .cinclude_string_literal,
+        .embedfile_string_literal,
+        .import_string_literal,
+        .string_literal,
+        => |loc| try hoverDefinitionStringLiteral(arena, handle, loc, markup_kind, offset_encoding),
         else => null,
     };
 

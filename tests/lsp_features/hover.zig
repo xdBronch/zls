@@ -42,6 +42,53 @@ test "char literal" {
         \\| HEX  | 0x27     |
     );
 }
+
+test "string literal" {
+    try testHover(
+        \\const foo = "<cursor>";
+    ,
+        \\```zig
+        \\*const [0:0]u8
+        \\```
+    );
+    try testHover(
+        \\const foo = "12345<cursor>";
+    ,
+        \\```zig
+        \\*const [5:0]u8
+        \\```
+    );
+    try testHover(
+        \\const foo = \\<cursor>
+        \\;
+    ,
+        \\```zig
+        \\*const [0:0]u8
+        \\```
+    );
+    try testHover(
+        \\const foo =
+        \\    \\so<cursor>me
+        \\    \\thing
+        \\;
+    ,
+        \\```zig
+        \\*const [10:0]u8
+        \\```
+    );
+    try testHover(
+        \\const foo =
+        \\    \\ends with
+        \\    \\an em<cursor>pty line
+        \\    \\
+        \\;
+    ,
+        \\```zig
+        \\*const [24:0]u8
+        \\```
+    );
+}
+
 test "integer literal" {
     try testHover(
         \\const foo = 4<cursor>2;
