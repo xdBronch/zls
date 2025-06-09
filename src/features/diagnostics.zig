@@ -360,7 +360,7 @@ pub fn getErrorBundleFromStderr(
     allocator: std.mem.Allocator,
     stderr_bytes: []const u8,
     ignore_src_path: bool,
-    single_file_source: ?[]const u8,
+    source: [:0]const u8,
 ) !std.zig.ErrorBundle {
     if (stderr_bytes.len == 0) return .empty;
 
@@ -391,36 +391,20 @@ pub fn getErrorBundleFromStderr(
             .character = (std.fmt.parseInt(u32, column_string, 10) catch continue) -| 1,
         };
 
-        const src_loc = if (single_file_source) |source| src_loc: {
-            const source_index = offsets.positionToIndex(source, utf8_position, .@"utf-8");
-            const source_line = offsets.lineSliceAtIndex(source, source_index);
+        const source_index = offsets.positionToIndex(source, utf8_position, .@"utf-8");
+        const source_line = offsets.lineSliceAtIndex(source, source_index);
 
-            var loc: offsets.Loc = .{ .start = source_index, .end = source_index };
+        const loc = offsets.identifierIndexToLoc(source, source_index, .full);
 
-            while (loc.end < source.len and Analyser.isSymbolChar(source[loc.end])) {
-                loc.end += 1;
-            }
-
-            break :src_loc try error_bundle.addSourceLocation(.{
-                .src_path = eb_src_path,
-                .line = utf8_position.line,
-                .column = utf8_position.character,
-                .span_start = @intCast(loc.start),
-                .span_main = @intCast(source_index),
-                .span_end = @intCast(loc.end),
-                .source_line = try error_bundle.addString(source_line),
-            });
-        } else src_loc: {
-            break :src_loc try error_bundle.addSourceLocation(.{
-                .src_path = eb_src_path,
-                .line = utf8_position.line,
-                .column = utf8_position.character,
-                .span_start = 0,
-                .span_main = 0,
-                .span_end = 0,
-                .source_line = eb_empty_string,
-            });
-        };
+        const src_loc = try error_bundle.addSourceLocation(.{
+            .src_path = eb_src_path,
+            .line = utf8_position.line,
+            .column = utf8_position.character,
+            .span_start = @intCast(loc.start),
+            .span_main = @intCast(source_index),
+            .span_end = @intCast(loc.end),
+            .source_line = try error_bundle.addString(source_line),
+        });
 
         if (std.mem.startsWith(u8, msg, " note: ")) {
             try notes.append(allocator, try error_bundle.addErrorMessage(.{
