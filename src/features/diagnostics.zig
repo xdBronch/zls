@@ -360,7 +360,7 @@ pub fn getErrorBundleFromStderr(
     allocator: std.mem.Allocator,
     stderr_bytes: []const u8,
     ignore_src_path: bool,
-    single_file_source: ?[]const u8,
+    single_file_source: ?[:0]const u8,
 ) !std.zig.ErrorBundle {
     if (stderr_bytes.len == 0) return .empty;
 
@@ -394,12 +394,7 @@ pub fn getErrorBundleFromStderr(
         const src_loc = if (single_file_source) |source| src_loc: {
             const source_index = offsets.positionToIndex(source, utf8_position, .@"utf-8");
             const source_line = offsets.lineSliceAtIndex(source, source_index);
-
-            var loc: offsets.Loc = .{ .start = source_index, .end = source_index };
-
-            while (loc.end < source.len and Analyser.isSymbolChar(source[loc.end])) {
-                loc.end += 1;
-            }
+            const loc = offsets.identifierIndexToLoc(source, source_index, .full);
 
             break :src_loc try error_bundle.addSourceLocation(.{
                 .src_path = eb_src_path,

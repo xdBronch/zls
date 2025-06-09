@@ -14,6 +14,7 @@ test "discard value" {
         \\test {
         \\    var foo = {};
         \\    const bar, var baz = .{ 1, 2 };
+        \\    const @"quoted name" = 3;
         \\}
         \\
     ,
@@ -23,6 +24,8 @@ test "discard value" {
         \\    const bar, var baz = .{ 1, 2 };
         \\    _ = baz; // autofix
         \\    _ = bar; // autofix
+        \\    const @"quoted name" = 3;
+        \\    _ = @"quoted name"; // autofix
         \\}
         \\
     );
@@ -81,6 +84,13 @@ test "discard function parameter" {
         \\}
         \\
     );
+    try testAutofix(
+        \\fn foo(@"quoted name": void) void {}
+    ,
+        \\fn foo(@"quoted name": void) void {
+        \\    _ = @"quoted name"; // autofix
+        \\}
+    );
 }
 
 test "discard function parameter with comments" {
@@ -111,9 +121,9 @@ test "discard function parameter with comments" {
 test "discard captures" {
     try testAutofix(
         \\test {
-        \\    for (0..10, 0..10, 0..10) |i, j, k| {}
+        \\    for (0..10, 0..10, 0..10, 0..10) |i, j, k, @"quoted name"| {}
         \\    switch (union(enum) {}{}) {
-        \\        inline .a => |cap, tag| {},
+        \\        inline .a => |cap, @"quoted name"| {},
         \\    }
         \\    if (null) |x| {}
         \\    if (null) |v| {} else |e| {}
@@ -123,15 +133,16 @@ test "discard captures" {
         \\
     ,
         \\test {
-        \\    for (0..10, 0..10, 0..10) |i, j, k| {
+        \\    for (0..10, 0..10, 0..10, 0..10) |i, j, k, @"quoted name"| {
         \\        _ = i; // autofix
         \\        _ = j; // autofix
         \\        _ = k; // autofix
+        \\        _ = @"quoted name"; // autofix
         \\    }
         \\    switch (union(enum) {}{}) {
-        \\        inline .a => |cap, tag| {
+        \\        inline .a => |cap, @"quoted name"| {
         \\            _ = cap; // autofix
-        \\            _ = tag; // autofix
+        \\            _ = @"quoted name"; // autofix
         \\        },
         \\    }
         \\    if (null) |x| {
@@ -292,6 +303,10 @@ test "remove pointless discard" {
         \\        _ = d; // autofix
         \\        return d;
         \\    }
+        // TODO
+        // \\    const @"quoted name": u32 = 0;
+        // \\    _ = @"quoted name"; // autofix
+        // \\    return @"quoted name";
         \\    return 0;
         \\}
         \\
@@ -302,6 +317,9 @@ test "remove pointless discard" {
         \\    if (c) |d| {
         \\        return d;
         \\    }
+        // TODO
+        // \\    const @"quoted name": u32 = 0;
+        // \\    return @"quoted name";
         \\    return 0;
         \\}
         \\
@@ -373,6 +391,18 @@ test "remove function parameter" {
     try testDiagnostic(
         \\fn foo(
         \\    alpha: u32,
+        \\) void {}
+    ,
+        \\fn foo() void {}
+    , .{ .filter_title = "remove function parameter" });
+    try testDiagnostic(
+        \\fn foo(@"quoted name": u32) void {}
+    ,
+        \\fn foo() void {}
+    , .{ .filter_title = "remove function parameter" });
+    try testDiagnostic(
+        \\fn foo(
+        \\    @"quoted name": u32,
         \\) void {}
     ,
         \\fn foo() void {}

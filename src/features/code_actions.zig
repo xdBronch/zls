@@ -42,10 +42,14 @@ pub const Builder = struct {
             if (err.src_loc == .none) continue;
             const src_loc = error_bundle.getSourceLocation(err.src_loc);
 
-            const loc: offsets.Loc = .{
+            var loc: offsets.Loc = .{
                 .start = src_loc.span_start,
                 .end = src_loc.span_end,
             };
+            if (builder.handle.tree.source[src_loc.span_start] == '@') {
+                loc.start += 2;
+                loc.end -= 1;
+            }
 
             switch (kind) {
                 .unused => |id| switch (id) {
@@ -55,6 +59,7 @@ pub const Builder = struct {
                     .@"switch tag capture", .capture => try handleUnusedCapture(builder, loc, &remove_capture_actions),
                 },
                 .non_camelcase_fn => try handleNonCamelcaseFunction(builder, loc),
+                // TODO make this work better with @"quoted identifiers"
                 .pointless_discard => try handlePointlessDiscard(builder, loc),
                 .omit_discard => |id| switch (id) {
                     .@"error capture; omit it instead" => {},
@@ -1039,6 +1044,7 @@ fn createDiscardText(
         indent.len +
         additional_indent.len +
         "_ = ".len +
+        @as(usize, if (!std.zig.isValidId(identifier_name)) 3 else 0) +
         identifier_name.len +
         "; // autofix".len +
         if (add_suffix_newline) 1 + indent.len else 0;
@@ -1048,7 +1054,7 @@ fn createDiscardText(
     new_text.appendSliceAssumeCapacity(indent);
     new_text.appendSliceAssumeCapacity(additional_indent);
     new_text.appendSliceAssumeCapacity("_ = ");
-    new_text.appendSliceAssumeCapacity(identifier_name);
+    new_text.printAssumeCapacity("{f}", .{std.zig.fmtId(identifier_name)});
     new_text.appendSliceAssumeCapacity("; // autofix");
     if (add_suffix_newline) {
         new_text.appendAssumeCapacity('\n');
